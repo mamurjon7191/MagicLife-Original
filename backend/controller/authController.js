@@ -14,13 +14,14 @@ const saveCookie = (req, res, token) => {
 };
 const createToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET_KEY, {
-    expiresIn: 600,
+    expiresIn: 600000,
   });
 };
 
 const sign_up = catchErrorAsync(async (req, res, next) => {
   let token;
   const randomCode = Math.round(Math.random() * 900000 + 100000);
+
   if (req.body.email) {
     const user = {
       email: req.body.email,
@@ -78,10 +79,6 @@ const verifyCode = catchErrorAsync(async (req, res, next) => {
     );
   }
 
-  const data = await Code.findByIdAndUpdate(user.id, {
-    verified: true,
-  });
-
   user.verified = true;
   user.save();
 
@@ -91,4 +88,43 @@ const verifyCode = catchErrorAsync(async (req, res, next) => {
   });
 });
 
-module.exports = { sign_up, verifyCode };
+const register = catchErrorAsync(async (req, res, next) => {
+  const getCode = await jwt.verify(
+    req.cookies.code,
+    process.env.JWT_SECRET_KEY
+  );
+
+  const user = await Code.findById(getCode.id);
+
+  if (!user.verified) {
+    return next(
+      new AppError(
+        "Siz verificationdan otmagansiz.Iltimos verificationdan oting !",
+        404
+      )
+    );
+  }
+
+  const check = user.email_or_phone.includes("@");
+
+  const data = await User.create({
+    account_id: req.body.account_id,
+    full_name: req.body.full_name,
+    birth_date: req.body.birth_date,
+    photo: req.body.photo,
+    phone: check ? "" : user.email_or_phone,
+    email: check ? user.email_or_phone : "",
+    password: req.body.password,
+    password_confirm: req.body.password_confirm,
+    phone_active: check ? false : true,
+    email_active: check ? true : false,
+  });
+
+  res.status(200).json({
+    status: "success",
+    message: "Siz muvaffaqiyatli royhatdan otdingiz",
+    data: data,
+  });
+});
+
+module.exports = { sign_up, verifyCode, register };
